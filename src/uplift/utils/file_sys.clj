@@ -1,5 +1,5 @@
 (ns uplift.utils.file-sys
-  (:require [uplift.command :as uc]
+  (:require [commando.command :as uc]
             [uplift.utils.algos :refer [varargs]]
             [taoensso.timbre :as timbre]
             [clojure.core.match :refer [match]]
@@ -60,7 +60,7 @@
                :or {user "root" dest "." clean? true}}]
   (let [temp "scp %s@%s:%s %s"
         cmd (format temp user host src dest)
-        result (uc/run cmd)
+        result (uc/launch cmd)
         ]
     result))
 
@@ -70,7 +70,7 @@
                :or {user "root" dest ""}}]
   (let [temp "scp %s %s@%s:%s"
         cmd (format temp src user host dest)]
-    (uc/run cmd)))
+    (uc/launch cmd)))
 
 
 (defn leading-slash?
@@ -107,11 +107,15 @@
            [\/ \/ true true] (rm-both path)
            [\/ \/ true false] (rm-first path)
            [\/ \/ false true] (rm-last path)
-           [\/ \/ false false] path
            [\/ _ true _] (rm-first path)
-           [\/ _ false _] path
            [_ \/ _ true] (rm-last path)
-           [_ \/ _ false] path)))
+           :else path)))
+
+
+(defn remove-all-slash
+  "Removes all slashes including in the middle"
+  [path]
+  (->> (clojure.string/split path #"/") (clojure.string/join "")))
 
 
 (defn path-join
@@ -136,3 +140,26 @@
   "Converts a string to a File"
   [path]
   (File. path))
+
+
+(defn make-path
+  [path]
+  (Paths/get path (into-array String [])))
+
+
+(defn path-info
+  "Gets commonly used info for a path given as a string"
+  [path]
+  (let [p (make-path path)
+        f (.toFile p)]
+    {:file? (.isFile f)
+     :dir? (.isDirectory f)
+     :exists? (.exists f)
+     :parent (.getParent p)
+     :filename (.getFileName p)}))
+
+
+(defn path->file
+  ""
+  [path]
+  (last (clojure.string/split path #"/")))

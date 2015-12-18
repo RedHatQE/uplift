@@ -16,8 +16,10 @@
                  [prismatic/schema "1.0.1"]
                  [org.clojure/tools.cli "0.3.3"]
                  [org.clojure/core.async "0.2.371"]
-                 [danlentz/clj-uuid "0.1.6"]]
+                 [danlentz/clj-uuid "0.1.6"]
+                 [http-kit "2.1.18"]
+                 [cheshire "5.5.0"]
+                 [commando "0.1.1-SNAPSHOT"]]
 
   :java-source-paths ["src"]
-  :aot :all
-  :main uplift.messaging.core)
+  :aot :all)
