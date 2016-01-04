@@ -14,9 +14,9 @@
 ;; 5. Install uplift to the VM
 ;;
 ;; Uplift agent tasks
-;; 1.
+;; 1. Install the ddnsclient for remote
 ;; 2. Get distro information
-;; 3. Install the ddnsclient for remote
+;; 3.
 ;; 4. Setup system time
 ;; 5. Install needed dependencies
 ;; 6. Setup hostname and ddns name
@@ -40,44 +40,23 @@
 (def uplift-git "https://github.com/RedHatQE/uplift.git")
 
 
-(defprotocol DepInstall
-  "Functionality to install all needed dependencies for GUI testing"
-  (setup-repos [this])
-  (install-deps [this]))
-
-
-(defprotocol SystemSetup
-  "Functionality to call system services or other functionality"
-  (timectl [this])
-  (firewallctl [this]))
-
-
-(s/defrecord Distro
-             [name :- s/Str                                            ;; eg RHEL
-              version :- s/Str                                         ;; eg 7.2
-              hostname :- s/Str                                        ;; eg my.home.org
-              bld-version :- s/Str                                      ;; a build name eg RHEL-7.1-20140630
-              ]
-             )
-
-
 (defrecord RHEL7 [distro]
-  DepInstall
+  uplift.protos/SystemSetup
   (install-deps [this]
     nil)
 
-  SystemSetup
+  uplift.protos/SystemSetup
   (firewallctl [this])
   (timectl [this]))
 
 (defrecord RHEL6 [distro]
-  DepInstall)
+  uplift.protos/SystemSetup
+  (install-deps [this]
+    nil)
 
-(defn factory
-  "Returns a Distro"
-  [host]
-  (let [info nil])
-  )
+  uplift.protos/SystemSetup
+  (firewallctl [this])
+  (timectl [this]))
 
 
 (defn install-uplift
@@ -120,19 +99,28 @@
   1. Install repo file
   2. Install JVM
   3. Install leiningen"
-  [host version & {:keys [key-path auto-key-path]
-                   :or {key-path (get-in config [:config :ssh-pub-key])
-                        auto-key-path (get-in config [:config :ssh-pub-key-auto])}}]
-  ;(run "ssh-add")
+  [host & {:keys [key-path auto-key-path ddns-uuid ddns-name]
+           :or {key-path (get-in config [:config :ssh-pub-key])
+                auto-key-path (get-in config [:config :ssh-pub-key-auto])}}]
   (let [copy-key-res (uc/copy-ssh-key host :key-path key-path)
         copy-autokey-res (uc/copy-ssh-key host :key-path auto-key-path)
-        ;; FIXME: a default repo makes no sense when you are building from nightlies
-        repo-install-res (ur/install-repos host version)
-        [_ major minor] (uc/check-java :host host)
+        [{:keys [variant distributor-id release major minor]
+          :as distro-info}] (uc/remote-distro-info host)
+        repo-install-res (ur/make-default-nightly-repo-file host)
+        _ (ur/enable-repos distro-info)
+        _ (launch "yum -y install wget" :host host)
+        ;; install and configure redhat ddns
+        _ (when ddns-uuid
+            (uc/install-redhat-ddns :host host)
+            (uc/edit-ddns-hosts host ddns-name ddns-uuid)
+            (uc/ddns-client-enable host))
+
+
+        [_ java-major java-minor] (uc/check-java :host host)
         install-jdk-res (cond
-                          (= major "0") (uc/install-jdk host 8)
-                          (= major "7") nil
-                          :else (timbre/logf :info (format "Java 1.%s_%s already installed" major minor)))
+                          (= java-major "0") (uc/install-jdk host 8)
+                          (= java-major "7") nil
+                          :else (timbre/logf :info (format "Java 1.%s_%s already installed" java-major java-minor)))
         ;; Install leiningen and verify
         lein-install-res (do
                            (uc/install-lein host "/usr/local/bin/lein")
